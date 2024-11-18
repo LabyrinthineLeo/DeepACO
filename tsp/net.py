@@ -13,6 +13,7 @@ class EmbNet(nn.Module):
         self.units = units
         self.act_fn = getattr(F, act_fn)
         self.agg_fn = getattr(gnn, f'global_{agg_fn}_pool')
+        #
         self.v_lin0 = nn.Linear(self.feats, self.units)
         self.v_lins1 = nn.ModuleList([nn.Linear(self.units, self.units) for i in range(self.depth)])
         self.v_lins2 = nn.ModuleList([nn.Linear(self.units, self.units) for i in range(self.depth)])
@@ -43,6 +44,7 @@ class EmbNet(nn.Module):
             x = x0 + self.act_fn(self.v_bns[i](x1 + self.agg_fn(w2 * x2[edge_index[1]], edge_index[0])))
             w = w0 + self.act_fn(self.e_bns[i](w1 + x3[edge_index[0]] + x4[edge_index[1]]))
         return w
+
 
 # general class for MLP
 class MLP(nn.Module):
@@ -78,8 +80,11 @@ class ParNet(MLP):
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
+        # 嵌入网络
         self.emb_net = EmbNet()
+        # 信息素学习者
         self.par_net_phe = ParNet()
+        # 启发式学习者
         self.par_net_heu = ParNet()
     def forward(self, pyg):
         x, edge_index, edge_attr = pyg.x, pyg.edge_index, pyg.edge_attr
