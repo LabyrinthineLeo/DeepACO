@@ -4,9 +4,9 @@ from torch.distributions import Categorical
 class ACO():
 
     def __init__(self, 
-                 distances,
-                 n_ants=20, 
-                 decay=0.9,
+                 distances, # 距离矩阵 [n_nodes, n_nodes]
+                 n_ants=20, # 蚁群规模
+                 decay=0.9, # 挥发率
                  alpha=1,
                  beta=1,
                  elitist=False,
@@ -16,8 +16,10 @@ class ACO():
                  min=None,
                  device='cpu'
                  ):
-        
+
+        # 问题规模，即n_nodes
         self.problem_size = len(distances)
+        #
         self.distances  = distances
         self.n_ants = n_ants
         self.decay = decay
@@ -33,7 +35,8 @@ class ACO():
                 min = 0.1
             self.min = min
             self.max = None
-        
+
+
         if pheromone is None:
             self.pheromone = torch.ones_like(self.distances)
             if min_max:
@@ -67,8 +70,11 @@ class ACO():
         self.heuristic = 1 / sparse_distances
     
     def sample(self):
+        # 生成路径
         paths, log_probs = self.gen_path(require_prob=True)
+        #
         costs = self.gen_path_costs(paths)
+
         return costs, log_probs
 
     @torch.no_grad()
@@ -138,17 +144,24 @@ class ACO():
             paths: torch tensor with shape (problem_size, n_ants), paths[:, i] is the constructed tour of the ith ant
             log_probs: torch tensor with shape (problem_size, n_ants), log_probs[i, j] is the log_prob of the ith action of the jth ant
         '''
+        # 随机初始化起始点 [n_ants, ]
         start = torch.randint(low=0, high=self.problem_size, size=(self.n_ants,), device=self.device)
+        # mask [n_ants, n_nodes]
         mask = torch.ones(size=(self.n_ants, self.problem_size), device=self.device)
+        # 对已选的节点置0
         mask[torch.arange(self.n_ants, device=self.device), start] = 0
-        
+
+        #
         paths_list = [] # paths_list[i] is the ith move (tensor) for all ants
         paths_list.append(start)
         
         log_probs_list = [] # log_probs_list[i] is the ith log_prob (tensor) for all ants' actions
-        
+
+        # 上一个动作 [n_ants, ]
         prev = start
+        # 马尔代夫决策过程
         for _ in range(self.problem_size-1):
+            # 每一步
             actions, log_probs = self.pick_move(prev, mask, require_prob)
             paths_list.append(actions)
             if require_prob:
@@ -168,12 +181,17 @@ class ACO():
             prev: tensor with shape (n_ants,), previous nodes for all ants
             mask: bool tensor with shape (n_ants, p_size), masks (0) for the visited cities
         '''
+        # 每个当前节点的信息素 [n_ants, n_nodes]
         pheromone = self.pheromone[prev] # shape: (n_ants, p_size)
+        # 每个当前节点的启发式信息 [n_ants, n_nodes]
         heuristic = self.heuristic[prev] # shape: (n_ants, p_size)
+        # 计算当前节点对于其他节点的距离信息并进行mask，筛掉已经选过的节点
         dist = ((pheromone ** self.alpha) * (heuristic ** self.beta) * mask) # shape: (n_ants, p_size)
         dist = Categorical(dist)
         actions = dist.sample() # shape: (n_ants,)
+
         log_probs = dist.log_prob(actions) if require_prob else None # shape: (n_ants,)
+
         return actions, log_probs
         
 

@@ -1,5 +1,5 @@
 import torch
-# from torch_geometric.data import Data
+from torch_geometric.data import Data
 
 def gen_distance_matrix(tsp_coordinates):
     '''
