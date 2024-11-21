@@ -70,9 +70,9 @@ class ACO():
         self.heuristic = 1 / sparse_distances
     
     def sample(self):
-        # 生成路径
+        # 生成路径 [path_n, n_ants]
         paths, log_probs = self.gen_path(require_prob=True)
-        #
+        # [n_ants, ]
         costs = self.gen_path_costs(paths)
 
         return costs, log_probs
@@ -133,8 +133,10 @@ class ACO():
         '''
         assert paths.shape == (self.problem_size, self.n_ants)
         u = paths.T # shape: (n_ants, problem_size)
+        # 向后滚动一位，下一节点
         v = torch.roll(u, shifts=1, dims=1)  # shape: (n_ants, problem_size)
         assert (self.distances[u, v] > 0).all()
+        # 路径和，[n_ants, ]
         return torch.sum(self.distances[u, v], dim=1)
 
     def gen_path(self, require_prob=False):
@@ -151,7 +153,7 @@ class ACO():
         # 对已选的节点置0
         mask[torch.arange(self.n_ants, device=self.device), start] = 0
 
-        #
+        # [path_len, n_ants]
         paths_list = [] # paths_list[i] is the ith move (tensor) for all ants
         paths_list.append(start)
         
@@ -161,18 +163,24 @@ class ACO():
         prev = start
         # 马尔代夫决策过程
         for _ in range(self.problem_size-1):
-            # 每一步
+            # 动作采样的过程 [n_ants, ]
             actions, log_probs = self.pick_move(prev, mask, require_prob)
+            #
             paths_list.append(actions)
             if require_prob:
+                # [path_len-1, n_ants]
                 log_probs_list.append(log_probs)
                 mask = mask.clone()
+
             prev = actions
             mask[torch.arange(self.n_ants, device=self.device), actions] = 0
         
         if require_prob:
+            # [path_len, n_ants]
+            # print(torch.stack(paths_list).shape, torch.stack(log_probs_list).shape)
             return torch.stack(paths_list), torch.stack(log_probs_list)
         else:
+            # print(torch.stack(paths_list).shape)
             return torch.stack(paths_list)
         
     def pick_move(self, prev, mask, require_prob):
@@ -185,11 +193,13 @@ class ACO():
         pheromone = self.pheromone[prev] # shape: (n_ants, p_size)
         # 每个当前节点的启发式信息 [n_ants, n_nodes]
         heuristic = self.heuristic[prev] # shape: (n_ants, p_size)
-        # 计算当前节点对于其他节点的距离信息并进行mask，筛掉已经选过的节点
+        # 计算当前节点对于其他节点的距离信息并进行mask，筛掉已经选过的节点 [n_ants, n_nodes]
         dist = ((pheromone ** self.alpha) * (heuristic ** self.beta) * mask) # shape: (n_ants, p_size)
+        # 构建概率分布（归一化）
         dist = Categorical(dist)
+        # 按照概率分布进行采样
         actions = dist.sample() # shape: (n_ants,)
-
+        # 记录采样到到每个动作的对数概率
         log_probs = dist.log_prob(actions) if require_prob else None # shape: (n_ants,)
 
         return actions, log_probs
@@ -197,10 +207,11 @@ class ACO():
 
 
 if __name__ == '__main__':
-    torch.set_printoptions(precision=3,sci_mode=False)
+    torch.set_printoptions(precision=3, sci_mode=False)
     input = torch.rand(size=(5, 2))
     distances = torch.norm(input[:, None] - input, dim=2, p=2)
     distances[torch.arange(len(distances)), torch.arange(len(distances))] = 1e10
     aco = ACO(distances)
     aco.sparsify(k_sparse=3)
+    aco.sample()
     print(aco.run(20))
